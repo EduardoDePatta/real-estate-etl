@@ -1,42 +1,26 @@
 import { ApiResponse, BaseService } from '../../../BaseService/BaseService'
 import { HTTP } from '../../../helpers'
+import { Property, WebCrawler } from '../../../WebCrawler/WebCrawler'
 
 interface Bla {
   column1: number
   column2: string
 }
 
-interface TesteData {
-  id: number
-  name: string
-}
-
-class TesteService extends BaseService<Bla, void, void, TesteData> {
-  public async exec(req: HTTP.Req<Bla, void, void>): Promise<ApiResponse<TesteData>> {
-    const transaction = await this.database.startManualTransaction()
+class TesteService extends BaseService<Bla, void, void, Property[]> {
+  public async exec(req: HTTP.Req<Bla, void, void>): Promise<ApiResponse<Property[]>> {
     try {
-      const { column1, column2 } = req.body
+      const crawler = new WebCrawler('https://www.zapimoveis.com.br/aluguel/?itl_id=1000064&itl_name=zap_-_link-header_alugar_to_zap_resultado-pesquisa')
 
-      const insertedData = await transaction.one<TesteData>(
-        `INSERT INTO real_estate.example_table (column1, column2) 
-         VALUES ($1, $2) 
-         RETURNING id, column1 AS name`,
-        [column1, column2]
-      )
-
-      await transaction.one('SELECT errooooo FROM real_estate.example_table WHERE id = $1', [insertedData.id])
-
-      const fetchedData = await transaction.oneOrNone<TesteData>(`SELECT id, column1 AS name FROM real_estate.example_table WHERE id = $1`, [insertedData.id])
-
-      await transaction.commit()
+      const html = await crawler.fetchProperties()
+      console.log('🚀 ~ TesteService ~ exec ~ html:', html)
 
       return {
         status: 200,
         message: '',
-        data: fetchedData!
+        data: html
       }
     } catch (error) {
-      await transaction.rollback()
       throw error
     }
   }
