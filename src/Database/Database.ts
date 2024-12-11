@@ -4,6 +4,7 @@ import environments from '../environments'
 export interface IManualTransaction {
   one: <T = any>(query: string, values?: any) => Promise<T>
   oneOrNone: <T = any>(query: string, values?: any) => Promise<T | null>
+  manyOrNone: <T = any>(query: string, values?: any) => Promise<T[]>
   none: (query: string, values?: any) => Promise<null>
   any: <T = any>(query: string, values?: any) => Promise<T[]>
   commit: () => Promise<void>
@@ -64,6 +65,7 @@ class Database implements IDatabase {
       oneOrNone: (query, values) => connection.oneOrNone(query, values),
       none: (query, values) => connection.none(query, values),
       any: (query, values) => connection.any(query, values),
+      manyOrNone: (query, values) => connection.manyOrNone(query, values),
       commit: async () => {
         await connection.none('COMMIT')
         connection.done()
