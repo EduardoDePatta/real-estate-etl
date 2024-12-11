@@ -1,6 +1,7 @@
 import { RequestHandler } from 'express'
 import { Database, IDatabase } from '../Database/Database'
 import { IBaseService } from './BaseService'
+import { logger } from '../logger'
 
 class ServiceFactory {
   private static database = Database.getInstance()
@@ -18,7 +19,7 @@ class ServiceFactory {
           })
         }
       } catch (error) {
-        console.error('ServiceFactory error:', error)
+        logger.error(error)
         next(error)
       }
     }
