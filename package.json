@@ -8,11 +8,13 @@
     "dev": "tsnd --respawn -r tsconfig-paths/register --pretty --transpile-only ./src/server.ts",
     "start": "node ./dist/server.js",
     "prod": "SET NODE_ENV=production && npm run build && npm run start",
-    "build": "tsc && tsc-alias && copyfiles -u 1 src/**/*.sql dist/"
+    "build": "tsc && tsc-alias && copyfiles -u 1 src/**/*.sql dist/",
+    "elastic": "npx ts-node src/elasticSearch/elasticSearch.ts"
   },
   "keywords": [],
   "license": "ISC",
   "dependencies": {
+    "@elastic/elasticsearch": "^8.16.2",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
