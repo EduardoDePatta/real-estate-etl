@@ -1,5 +1,5 @@
-import { writeFileSync } from 'fs'
 import puppeteer, { Page } from 'puppeteer'
+import { HttpException } from '../exceptions'
 
 export interface Property {
   id: string
@@ -18,108 +18,91 @@ export interface Property {
   atualizado_em: string
 }
 
+export interface Listing {
+  id?: string
+  title?: string
+  description?: string
+  portal?: string
+  pricingInfos?: Array<{
+    price?: string | number
+    businessType?: string
+  }>
+  address?: {
+    street?: string
+    streetNumber?: string
+    neighborhood?: string
+    city?: string
+    stateAcronym?: string
+  }
+  bedrooms?: (number | string)[]
+  bathrooms?: (number | string)[]
+  parkingSpaces?: (number | string)[]
+  usableAreas?: (number | string)[]
+  updatedAt?: string
+}
+
 class WebCrawler {
   private baseUrl: string
-  private tipoNegocio: string
 
-  constructor(baseUrl: string, tipoNegocio?: string) {
+  constructor(baseUrl: string) {
     this.baseUrl = baseUrl
-    this.tipoNegocio = tipoNegocio || this.inferirTipoNegocio(baseUrl)
   }
 
-  static async createCrawlers(url: string, count: number): Promise<WebCrawler[]> {
-    return Array.from({ length: count }, () => new WebCrawler(url))
+  static async createCrawlers(url: string): Promise<WebCrawler> {
+    return new WebCrawler(url)
   }
 
-  private inferirTipoNegocio(url: string): string {
-    if (url.includes('/aluguel')) return 'Aluguel'
-    if (url.includes('/venda')) return 'Venda'
-    return 'Indefinido'
+  private parsePropertyData(listing: Listing): Property {
+    const address = listing.address || {}
+
+    const formattedAddress = [
+      address.street || 'N/A',
+      address.streetNumber ? `, ${address.streetNumber}` : '',
+      address.neighborhood ? `, ${address.neighborhood}` : '',
+      address.city || 'N/A',
+      address.stateAcronym || ''
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    return {
+      id: listing.id || 'N/A',
+      titulo: listing.title || 'N/A',
+      descricao: listing.description || '',
+      portal: listing.portal || 'N/A',
+      url: `https://www.zapimoveis.com.br/imovel/${listing.id || ''}`,
+      tipoNegocio: listing.pricingInfos?.[0]?.businessType || 'N/A',
+      endereco: formattedAddress,
+      preco: parseFloat(String(listing.pricingInfos?.[0]?.price ?? '0')),
+      quartos: Number(listing.bedrooms?.[0] ?? 0),
+      banheiros: Number(listing.bathrooms?.[0] ?? 0),
+      vagas_garagem: Number(listing.parkingSpaces?.[0] ?? 0),
+      area_util: parseFloat(String(listing.usableAreas?.[0] ?? '0')),
+      capturado_em: new Date().toISOString(),
+      atualizado_em: listing.updatedAt || new Date().toISOString()
+    }
   }
 
-  private async autoScroll(page: Page, maxHeight = 25000): Promise<void> {
-    await page.evaluate(async (maxHeight: number) => {
-      await new Promise<void>((resolve) => {
-        let totalHeight = 0
-        let previousHeight = 0
-        const distance = 1000
-        const interval = setInterval(() => {
-          window.scrollBy(0, distance)
-          totalHeight += distance
-          const currentHeight = document.body.scrollHeight
-
-          if (totalHeight >= currentHeight || totalHeight >= maxHeight) {
-            clearInterval(interval)
-            resolve()
-          }
-
-          previousHeight = currentHeight
-        }, 300)
-      })
-    }, maxHeight)
-  }
-
-  private async fetchPropertiesFromPage(page: Page): Promise<Property[]> {
-    return page.evaluate((tipoNegocio: string) => {
-      const items = document.querySelectorAll('[data-testid="card"]')
-      const data: Property[] = []
-
-      items.forEach((item) => {
-        const titulo = item.querySelector('[data-cy="rp-cardProperty-location-txt"]')?.textContent?.trim() || 'N/A'
-        const descricao = item.querySelector('[data-cy="rp-cardProperty-description-txt"]')?.textContent?.trim() || ''
-        const endereco = item.querySelector('[data-cy="rp-cardProperty-street-txt"]')?.textContent?.trim() || 'N/A'
-
-        const precoElement = item.querySelector('[data-cy="rp-cardProperty-price-txt"] > p')
-        const precoRaw = precoElement?.textContent?.trim() || '0'
-        const preco = parseFloat(precoRaw.replace(/[^0-9]/g, '')) || 0
-
-        const quartosRaw = item.querySelector('[data-cy="rp-cardProperty-bedroomQuantity-txt"]')?.textContent || '0'
-        const quartos = parseInt(quartosRaw.replace(/[^\d]/g, '')) || 0
-
-        const banheirosRaw = item.querySelector('[data-cy="rp-cardProperty-bathroomQuantity-txt"]')?.textContent || '0'
-        const banheiros = parseInt(banheirosRaw.replace(/[^\d]/g, '')) || 0
-
-        const vagasRaw = item.querySelector('[data-cy="rp-cardProperty-parkingSpacesQuantity-txt"]')?.textContent || '0'
-        const vagas_garagem = parseInt(vagasRaw.replace(/[^\d]/g, '')) || 0
-
-        const areaRaw = item.querySelector('[data-cy="rp-cardProperty-propertyArea-txt"]')?.textContent || '0'
-        const area_util = parseFloat(areaRaw.replace(/[^\d]/g, '')) || 0
-
-        const urlElement = item.closest('a[itemprop="url"]') as HTMLAnchorElement | null
-        const url = urlElement?.href || 'no'
-        const id = urlElement?.getAttribute('data-id') || 'N/A'
-
-        data.push({
-          id,
-          titulo,
-          descricao,
-          portal: 'Zap Imóveis',
-          url,
-          tipoNegocio,
-          endereco,
-          preco,
-          quartos,
-          banheiros,
-          vagas_garagem,
-          area_util,
-          capturado_em: new Date().toISOString(),
-          atualizado_em: new Date().toISOString()
-        })
-      })
-
-      return data
-    }, this.tipoNegocio)
-  }
-
-  public async fetchProperties(): Promise<Property[]> {
-    const browser = await puppeteer.launch({
-      headless: true
+  private async extractJSONFromPage(page: Page): Promise<any> {
+    return page.evaluate(() => {
+      const preTag = document.querySelector('pre')
+      if (!preTag) {
+        throw new HttpException(400, 'Elemento <pre> com JSON não encontrado;')
+      }
+      return JSON.parse(preTag.textContent || '{}')
     })
+  }
 
+  public async fetchProperties(header?: Record<string, string>): Promise<Property[]> {
+    const browser = await puppeteer.launch({ headless: true })
     const page = await browser.newPage()
 
     try {
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36')
+
+      if (header) {
+        await page.setExtraHTTPHeaders(header)
+      }
 
       await page.setRequestInterception(true)
       page.on('request', (req) => {
@@ -131,16 +114,18 @@ class WebCrawler {
         }
       })
 
-      await page.goto(this.baseUrl, { waitUntil: 'networkidle2' })
+      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded' })
 
-      await this.autoScroll(page)
+      const jsonData = await this.extractJSONFromPage(page)
 
-      const properties = await this.fetchPropertiesFromPage(page)
+      const listings = jsonData?.search?.result?.listings || []
+      const properties = listings.map((item: any) => this.parsePropertyData(item.listing))
 
       await browser.close()
       return properties
     } catch (error) {
       await browser.close()
+      console.error('Erro ao capturar os dados:', error)
       throw error
     }
   }
