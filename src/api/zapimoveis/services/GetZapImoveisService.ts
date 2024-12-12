@@ -103,6 +103,7 @@ class GetZapImoveisService extends BaseService<void, void, GetZapImoveisService.
   }
 
   private createQueryString(params: Record<string, string>): string {
+    if (Number(this.size) > 80) this.size = '80'
     return new URLSearchParams({ ...params, size: this.size, listingType: 'USED' }).toString()
   }
 }
